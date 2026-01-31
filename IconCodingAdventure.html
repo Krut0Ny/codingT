@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon Coding Adventure</title>
+    
+    <!-- ส่วนที่เพิ่ม: Firebase และ DataManager -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="DataManager.js"></script>
+
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #2563eb;
+            --secondary: #eab308;
+            --bg-color: #eff6ff;
+            --panel-bg: #f8fafc;
+            --grid-bg: #064e3b;
+            --cell-bg: #eab308;
+            --cell-path: #fcd34d;
+            --cell-water: #38bdf8;
+            --text-main: #334155;
+            --text-light: #64748b;
+        }
+
+        * { box-sizing: border-box; user-select: none; -webkit-user-select: none; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        
+        body { margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; background-color: var(--bg-color); overflow: hidden; }
+
+        /* Header */
+        header { background: white; padding: 0.75rem 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+        .logo { display: flex; align-items: center; gap: 0.75rem; }
+        .logo-box { background: var(--primary); color: white; padding: 0.5rem; border-radius: 0.5rem; font-weight: bold; font-family: monospace; font-size: 1.25rem; }
+        .logo-text { font-weight: bold; color: var(--text-main); font-size: 1.1rem; }
+        
+        .header-controls { display: flex; gap: 0.75rem; align-items: center; }
+        .btn-icon { background: #f1f5f9; border: none; padding: 0.5rem; border-radius: 50%; cursor: pointer; color: var(--text-light); transition: 0.2s; }
+        .btn-icon:hover { background: #e2e8f0; }
+        .btn-level { background: var(--secondary); color: #422006; padding: 0.5rem 1rem; border-radius: 9999px; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 0.5rem; box-shadow: 0 2px 0 #ca8a04; transition: transform 0.1s; }
+        .btn-level:active { transform: translateY(2px); box-shadow: none; }
+
+        /* Main Layout */
+        main { flex: 1; display: flex; overflow: hidden; }
+        
+        /* Left Panel: Coding */
+        .panel-left { flex: 1; background: var(--panel-bg); display: flex; flex-direction: column; border-right: 1px solid #cbd5e1; max-width: 500px; }
+        
+        .program-area { flex: 1; padding: 1rem; overflow-y: auto; }
+        .program-box { background: white; border-radius: 1rem; padding: 1rem; min-height: 140px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05); position: relative; border: 2px solid #e2e8f0; }
+        .program-label { position: absolute; top: 0.5rem; left: 0.75rem; font-size: 0.75rem; font-weight: bold; color: #94a3b8; text-transform: uppercase; }
+        .program-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
+        
+        /* Command Blocks in Queue */
+        .cmd-block { width: 3rem; height: 3rem; border-radius: 0.5rem; display: flex; justify-content: center; align-items: center; color: white; cursor: pointer; transition: transform 0.1s; position: relative; }
+        .cmd-block:hover { transform: scale(1.1); }
+        .cmd-block.active { box-shadow: 0 0 0 4px #facc15; z-index: 10; transform: scale(1.15); }
+        .cmd-UP { background: #3b82f6; box-shadow: 0 3px 0 #1d4ed8; }
+        .cmd-DOWN { background: #a855f7; box-shadow: 0 3px 0 #7e22ce; }
+        .cmd-LEFT { background: #f97316; box-shadow: 0 3px 0 #c2410c; }
+        .cmd-RIGHT { background: #22c55e; box-shadow: 0 3px 0 #15803d; }
+        .cmd-block:active { transform: translateY(3px); box-shadow: none !important; }
+
+        /* Controls Area */
+        .controls-area { background: white; padding: 1rem; border-top-left-radius: 1.5rem; border-top-right-radius: 1.5rem; box-shadow: 0 -4px 6px -1px rgba(0,0,0,0.1); z-index: 20; }
+        .d-pad { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+        .d-row { display: flex; gap: 0.75rem; }
+        
+        .btn-control { width: 4rem; height: 4rem; border-radius: 1rem; border: none; cursor: pointer; color: white; font-size: 1.5rem; display: flex; justify-content: center; align-items: center; transition: transform 0.1s; position: relative; }
+        .btn-control:active { transform: translateY(4px); border-bottom-width: 0 !important; }
+        
+        .btn-up { background: #dbeafe; color: #2563eb; border-bottom: 4px solid #3b82f6; }
+        .btn-down { background: #f3e8ff; color: #9333ea; border-bottom: 4px solid #a855f7; }
+        .btn-left { background: #ffedd5; color: #ea580c; border-bottom: 4px solid #f97316; }
+        .btn-right { background: #dcfce7; color: #16a34a; border-bottom: 4px solid #22c55e; }
+
+        .action-buttons { display: flex; gap: 1rem; padding-top: 1rem; border-top: 1px solid #e2e8f0; }
+        .btn-action { flex: 1; padding: 0.75rem; border-radius: 0.75rem; border: none; font-weight: bold; cursor: pointer; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.5rem; transition: 0.1s; }
+        .btn-reset { background: #e2e8f0; color: #475569; }
+        .btn-reset:hover { background: #cbd5e1; }
+        .btn-run { background: #22c55e; color: white; box-shadow: 0 4px 0 #15803d; }
+        .btn-run:hover { background: #16a34a; }
+        .btn-run:active { transform: translateY(4px); box-shadow: none; }
+        .btn-run:disabled { background: #86efac; cursor: not-allowed; box-shadow: none; transform: none; }
+
+        /* Right Panel: Game Board */
+        .panel-right { flex: 1; background: #4ade80; position: relative; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+        .bg-pattern { position: absolute; inset: 0; background-image: radial-gradient(#166534 2px, transparent 2px); background-size: 24px 24px; opacity: 0.2; pointer-events: none; }
+        
+        #grid-container { display: grid; gap: 2px; background: var(--grid-bg); padding: 4px; border-radius: 0.5rem; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); transition: transform 0.3s; }
+        .cell { width: 50px; height: 50px; position: relative; border-radius: 2px; display: flex; justify-content: center; align-items: center; }
+        @media (min-width: 640px) { .cell { width: 64px; height: 64px; } }
+        
+        .cell-water { background: var(--cell-water); animation: pulse 2s infinite; }
+        .cell-wall { background: var(--cell-bg); }
+        .cell-path { background: var(--cell-path); border-bottom: 4px solid #d97706; }
+        
+        .star { color: #fef08a; filter: drop-shadow(0 4px 3px rgba(0,0,0,0.3)); animation: bounce 2s infinite; }
+        
+        .player { width: 70%; height: 70%; background: white; border-radius: 50%; border: 4px solid #1e293b; position: absolute; z-index: 20; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: all 0.5s ease-in-out; }
+        .eyes { display: flex; gap: 4px; }
+        .eye { width: 4px; height: 8px; background: #1e293b; border-radius: 99px; animation: blink 3s infinite; }
+        .antenna { position: absolute; top: -8px; width: 3px; height: 8px; background: #94a3b8; }
+        .antenna::after { content: ''; position: absolute; top: -4px; left: -2.5px; width: 8px; height: 8px; background: #ef4444; border-radius: 50%; animation: ping 1s infinite; }
+
+        /* Modals */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.3s; }
+        .modal-overlay.show { opacity: 1; pointer-events: auto; }
+        
+        .modal-box { background: white; padding: 2rem; border-radius: 1.5rem; text-align: center; max-width: 320px; width: 90%; transform: scale(0.9); transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); border: 4px solid; }
+        .modal-overlay.show .modal-box { transform: scale(1); }
+        
+        .modal-success { border-color: #facc15; }
+        .modal-fail { border-color: #f87171; }
+        
+        .modal-icon-bg { width: 80px; height: 80px; border-radius: 50%; display: flex; justify-content: center; align-items: center; margin: -4rem auto 1rem auto; border: 4px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .bg-success { background: #facc15; }
+        .bg-fail { background: #f87171; }
+        
+        .modal-title { font-size: 1.5rem; font-weight: bold; margin-bottom: 0.5rem; color: #1e293b; }
+        .modal-desc { color: #64748b; margin-bottom: 1.5rem; }
+        .btn-full { width: 100%; padding: 0.75rem; border-radius: 0.75rem; font-weight: bold; border: none; cursor: pointer; font-size: 1rem; margin-top: 0.5rem; color: white; box-shadow: 0 4px 0 rgba(0,0,0,0.2); transition: 0.1s; }
+        .btn-full:active { transform: translateY(4px); box-shadow: none; }
+        .btn-next { background: #22c55e; }
+        .btn-retry { background: #3b82f6; }
+
+        /* Level Menu */
+        .level-menu { position: fixed; inset: 0; background: white; z-index: 50; display: flex; flex-direction: column; transform: translateY(100%); transition: transform 0.3s; }
+        .level-menu.show { transform: translateY(0); }
+        .level-header { padding: 1rem; background: var(--primary); color: white; display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 1.25rem; }
+        .level-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 1rem; padding: 2rem; overflow-y: auto; max-width: 800px; margin: 0 auto; width: 100%; }
+        .level-btn { aspect-ratio: 1; border-radius: 1rem; border: 2px solid #e2e8f0; background: white; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: bold; color: var(--text-light); transition: 0.2s; }
+        .level-btn:hover { background: #f1f5f9; border-color: var(--primary); color: var(--primary); }
+        .level-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* Icons (SVG replacement) */
+        svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+        /* Animations */
+        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 0.8; } }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        @keyframes blink { 0%, 96%, 100% { transform: scaleY(1); } 98% { transform: scaleY(0.1); } }
+        @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+
+        @media (max-width: 600px) {
+            main { flex-direction: column; }
+            .panel-left { max-width: 100%; height: 50%; border-right: none; border-bottom: 1px solid #cbd5e1; }
+            .panel-right { height: 50%; }
+            .program-area { padding: 0.5rem; }
+            .program-box { min-height: 80px; padding: 0.5rem; }
+            .controls-area { padding: 0.5rem; }
+            .btn-control { width: 3.5rem; height: 3.5rem; }
+            .cell { width: 40px; height: 40px; }
+        }
+        
+        #loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.9); z-index: 200; display: flex; justify-content: center; align-items: center; flex-direction: column; gap: 10px; color: #3b82f6; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="loading-overlay">
+        <div>กำลังโหลดข้อมูลนักเรียน...</div>
+        <!-- Simple spinner -->
+        <svg style="animation: spin 1s linear infinite" width="40" height="40" viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+    </div>
+
+    <header>
+        <div class="logo">
+            <div class="logo-box">&lt;/&gt;</div>
+            <span class="logo-text">IconCode</span>
+        </div>
+        <div class="header-controls">
+            <button class="btn-icon" id="btn-mute" title="เปิด/ปิด เสียง">
+                <!-- Volume Icon -->
+                <svg viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+            </button>
+            <button class="btn-level" id="btn-level-menu">
+                <span>ด่าน <span id="level-display">1</span></span>
+                <svg viewBox="0 0 24 24" style="width:16px; height:16px;"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </button>
+        </div>
+    </header>
+
+    <main>
+        <div class="panel-left">
+            <div class="program-area">
+                <div class="program-box">
+                    <span class="program-label">คำสั่ง (Program)</span>
+                    <div class="program-list" id="program-list">
+                        <div style="width:100%; text-align:center; color:#cbd5e1; margin-top:20px;">กดลูกศรเพื่อเริ่ม...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="controls-area">
+                <div class="d-pad">
+                    <button class="btn-control btn-up" onclick="game.addCommand('UP')">
+                        <svg viewBox="0 0 24 24"><line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline></svg>
+                    </button>
+                    <div class="d-row">
+                        <button class="btn-control btn-left" onclick="game.addCommand('LEFT')">
+                            <svg viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                        </button>
+                        <button class="btn-control btn-down" onclick="game.addCommand('DOWN')">
+                            <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
+                        </button>
+                        <button class="btn-control btn-right" onclick="game.addCommand('RIGHT')">
+                            <svg viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn-action btn-reset" onclick="game.resetLevel()">
+                        <svg viewBox="0 0 24 24" style="width:18px;"><polyline points="1 4 1 10 7 10"></polyline><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path></svg>
+                        เริ่มใหม่
+                    </button>
+                    <button class="btn-action btn-run" id="btn-run" onclick="game.runProgram()">
+                        <svg viewBox="0 0 24 24" style="width:20px; fill:currentColor; stroke:none;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        เริ่มทำงาน
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-right">
+            <div class="bg-pattern"></div>
+            <div id="grid-container">
+                <!-- Grid will be generated here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div id="modal-success" class="modal-overlay">
+        <div class="modal-box modal-success">
+            <div class="modal-icon-bg bg-success">
+                <svg viewBox="0 0 24 24" style="width:40px; height:40px; stroke:white;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            </div>
+            <div class="modal-title">เก่งมาก!</div>
+            <div class="modal-desc">ภารกิจสำเร็จ เก็บดาวได้แล้ว</div>
+            <button class="btn-full btn-next" onclick="game.nextLevel()">ด่านถัดไป</button>
+            <button class="btn-full btn-reset" style="background:transparent; color:#94a3b8; box-shadow:none;" onclick="game.replayLevel()">เล่นซ้ำ</button>
+        </div>
+    </div>
+
+    <div id="modal-fail" class="modal-overlay">
+        <div class="modal-box modal-fail">
+            <div class="modal-icon-bg bg-fail">
+                <svg viewBox="0 0 24 24" style="width:40px; height:40px; stroke:white;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </div>
+            <div class="modal-title">โอ๊ะโอ!</div>
+            <div class="modal-desc">หุ่นยนต์ชนขอบ หรือ ตกน้ำ<br>ลองใหม่อีกครั้งนะ</div>
+            <button class="btn-full btn-retry" onclick="game.resetLevel()">ลองอีกครั้ง</button>
+        </div>
+    </div>
+
+    <!-- Level Menu -->
+    <div id="level-menu" class="level-menu">
+        <div class="level-header">
+            <span>เลือกด่าน</span>
+            <button onclick="document.getElementById('level-menu').classList.remove('show')" style="background:none; border:none; color:white; cursor:pointer;">
+                <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+        </div>
+        <div class="level-grid" id="level-grid">
+            <!-- Level buttons generated here -->
+        </div>
+    </div>
+
+    <script>
+        // --- Game Data ---
+        // S=Start, E=End, .=Path, #=Water
+        const LEVELS = [
+            ["###", "#SE", "###"], 
+            ["####", "#S.E", "####"],
+            ["###", "#S#", "#.#", "#E#", "###"],
+            ["#####", "#S..E", "#####"],
+            ["###", "#E#", "#.#", "#S#", "###"],
+            ["####", "#S.#", "#.E#", "####"],
+            ["####", "#..E", "#S##", "####"],
+            ["#####", "#S..#", "###.#", "###E#"],
+            ["####", "#E.#", "#.S#", "####"],
+            ["#####", "#S###", "#...E", "#####"],
+            ["#####", "#S..#", "###.#", "#E..#", "#####"],
+            ["#####", "#...#", "#.#S#", "#E###", "#####"],
+            ["#####", "#S#E#", "#.#.#", "#...#", "#####"],
+            ["######", "#S...#", "####.#", "#E...#", "######"],
+            ["#####", "#..S#", "#.###", "#E..#", "#####"],
+            ["######", "#S...#", "####.#", "#..#.#", "#E....", "######"],
+            ["#####", "#S..#", "###.#", "#...#", "#.###", "#E...", "#####"],
+            ["#####", "#...E", "#.#.#", "#S#.#", "#####"],
+            ["######", "#....#", "##.###", "#S...E", "######"],
+            ["#######", "#..S..#", "#.###.#", "#...E.#", "#######"]
+        ];
+
+        // --- Procedural Generation (Levels 21-100) ---
+        function generateProceduralLevels() {
+            function createLevel(levelNum) {
+                let width = 5, height = 5, minPathLength = 5;
+                if (levelNum > 20 && levelNum <= 40) { width = 5; height = 5; minPathLength = 6; }
+                else if (levelNum > 40 && levelNum <= 70) { width = 6; height = 6; minPathLength = 9; }
+                else if (levelNum > 70) { width = 7; height = 7; minPathLength = 12; }
+
+                const grid = Array(height).fill().map(() => Array(width).fill('#'));
+                let startX = Math.floor(Math.random() * (width - 2)) + 1;
+                let startY = Math.floor(Math.random() * (height - 2)) + 1;
+                grid[startY][startX] = 'S';
+                
+                let currentX = startX;
+                let currentY = startY;
+                let path = [{x: startX, y: startY}];
+                let attempts = 0;
+                while (path.length < minPathLength && attempts < 1000) {
+                    attempts++;
+                    const directions = [{dx: 0, dy: -1}, {dx: 0, dy: 1}, {dx: -1, dy: 0}, {dx: 1, dy: 0}].sort(() => Math.random() - 0.5); 
+                    let moved = false;
+                    for (let dir of directions) {
+                        const nextX = currentX + dir.dx;
+                        const nextY = currentY + dir.dy;
+                        if (nextX >= 0 && nextX < width && nextY >= 0 && nextY < height) {
+                            if (grid[nextY][nextX] === '#') {
+                                grid[nextY][nextX] = '.'; 
+                                currentX = nextX;
+                                currentY = nextY;
+                                path.push({x: currentX, y: currentY});
+                                moved = true;
+                                break; 
+                            }
+                        }
+                    }
+                    if (!moved) {
+                        if (path.length >= minPathLength) break;
+                        else return createLevel(levelNum); 
+                    }
+                }
+                const last = path[path.length - 1];
+                if (last.x === startX && last.y === startY) return createLevel(levelNum); 
+                grid[last.y][last.x] = 'E';
+                return grid.map(row => row.join(''));
+            }
+            for (let i = 21; i <= 100; i++) {
+                LEVELS.push(createLevel(i));
+            }
+        }
+        generateProceduralLevels();
+
+        // --- Sound Engine ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            play(type) {
+                if (this.muted) return;
+                this.init();
+                const t = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                if (type === 'click') {
+                    osc.type = 'sine'; osc.frequency.setValueAtTime(800, t); gain.gain.setValueAtTime(0.1, t); osc.start(); osc.stop(t + 0.1);
+                } else if (type === 'move') {
+                    osc.type = 'triangle'; osc.frequency.setValueAtTime(150, t); gain.gain.setValueAtTime(0.1, t); osc.start(); osc.stop(t + 0.1);
+                } else if (type === 'win') {
+                    [523, 659, 784, 1046].forEach((f, i) => { const o = this.ctx.createOscillator(); const g = this.ctx.createGain(); o.connect(g); g.connect(this.ctx.destination); o.type = 'square'; o.frequency.value = f; g.gain.setValueAtTime(0.05, t + i*0.1); o.start(t + i*0.1); o.stop(t + i*0.1 + 0.3); });
+                } else if (type === 'fail') {
+                    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(200, t); gain.gain.setValueAtTime(0.1, t); osc.start(); osc.stop(t + 0.5);
+                }
+            }
+        }
+
+        // --- Game Logic ---
+        const game = {
+            levelIndex: 0,
+            grid: [],
+            startPos: {x:0, y:0},
+            playerPos: {x:0, y:0},
+            program: [],
+            isPlaying: false,
+            state: 'idle', 
+            stepIndex: -1,
+            timer: null,
+            sound: new SoundEngine(),
+
+            async init(startLevel) {
+                this.loadLevel(startLevel || 0);
+                this.setupListeners();
+                this.renderLevelMenu();
+                
+                // Hide loading screen
+                document.getElementById('loading-overlay').style.display = 'none';
+            },
+
+            loadLevel(idx) {
+                this.levelIndex = idx;
+                const mapRaw = LEVELS[idx];
+                this.grid = mapRaw.map(row => row.split(''));
+                this.rows = this.grid.length;
+                this.cols = this.grid[0].length;
+                
+                for(let y=0; y<this.rows; y++) {
+                    for(let x=0; x<this.cols; x++) {
+                        if(this.grid[y][x] === 'S') {
+                            this.startPos = {x, y};
+                        }
+                    }
+                }
+                
+                this.resetState();
+                this.renderGrid();
+                this.renderProgram();
+                this.updateUI();
+                
+                document.getElementById('level-display').innerText = idx + 1;
+                document.getElementById('modal-success').classList.remove('show');
+                document.getElementById('modal-fail').classList.remove('show');
+            },
+
+            resetState() {
+                this.playerPos = {...this.startPos};
+                this.program = [];
+                this.isPlaying = false;
+                this.state = 'idle';
+                this.stepIndex = -1;
+                clearInterval(this.timer);
+                this.renderPlayer();
+                this.renderProgram();
+                this.updateUI();
+            },
+
+            replayLevel() {
+                this.playerPos = {...this.startPos};
+                this.isPlaying = false;
+                this.state = 'idle';
+                this.stepIndex = -1;
+                clearInterval(this.timer);
+                this.renderPlayer();
+                document.getElementById('modal-success').classList.remove('show');
+                this.updateUI();
+            },
+
+            resetLevel() {
+                if (this.state !== 'idle') {
+                    this.isPlaying = false;
+                    this.state = 'idle';
+                    clearInterval(this.timer);
+                    this.playerPos = {...this.startPos};
+                    this.stepIndex = -1;
+                    this.renderPlayer();
+                    this.renderProgram(); 
+                } else {
+                    this.resetState();
+                }
+                this.sound.play('click');
+                document.getElementById('modal-fail').classList.remove('show');
+                document.getElementById('modal-success').classList.remove('show');
+                this.updateUI();
+            },
+
+            addCommand(cmd) {
+                if(this.state !== 'idle') return;
+                if(this.program.length >= 12) return;
+                this.program.push(cmd);
+                this.sound.play('click');
+                this.renderProgram();
+                this.updateUI();
+            },
+
+            removeCommand(idx) {
+                if(this.state !== 'idle') return;
+                this.program.splice(idx, 1);
+                this.sound.play('click');
+                this.renderProgram();
+                this.updateUI();
+            },
+
+            runProgram() {
+                if(this.program.length === 0) return;
+                this.state = 'running';
+                this.isPlaying = true;
+                this.stepIndex = -1;
+                this.playerPos = {...this.startPos}; 
+                this.renderPlayer();
+                this.sound.play('click');
+                this.updateUI();
+
+                this.timer = setInterval(() => {
+                    this.executeStep();
+                }, 600);
+            },
+
+            executeStep() {
+                this.stepIndex++;
+                this.renderProgram(); 
+
+                if(this.stepIndex >= this.program.length) {
+                    this.finishRun();
+                    return;
+                }
+
+                const cmd = this.program[this.stepIndex];
+                let {x, y} = this.playerPos;
+
+                if(cmd === 'UP') y--;
+                if(cmd === 'DOWN') y++;
+                if(cmd === 'LEFT') x--;
+                if(cmd === 'RIGHT') x++;
+
+                if(x < 0 || x >= this.cols || y < 0 || y >= this.rows || this.grid[y][x] === '#') {
+                    this.failGame();
+                    return;
+                }
+
+                this.playerPos = {x, y};
+                this.renderPlayer();
+                this.sound.play('move');
+
+                if(this.grid[y][x] === 'E') {
+                    this.winGame();
+                }
+            },
+
+            finishRun() {
+                clearInterval(this.timer);
+                this.isPlaying = false;
+                if(this.state === 'running') {
+                   const {x, y} = this.playerPos;
+                   if(this.grid[y][x] !== 'E') this.failGame();
+                }
+            },
+
+            winGame() {
+                clearInterval(this.timer);
+                this.state = 'success';
+                this.isPlaying = false;
+                this.sound.play('win');
+                
+                // SAVE PROGRESS
+                DataManager.saveProgress('icon', this.levelIndex + 1);
+
+                setTimeout(() => {
+                    document.getElementById('modal-success').classList.add('show');
+                }, 500);
+            },
+
+            failGame() {
+                clearInterval(this.timer);
+                this.state = 'fail';
+                this.isPlaying = false;
+                this.sound.play('fail');
+                setTimeout(() => {
+                    document.getElementById('modal-fail').classList.add('show');
+                }, 500);
+            },
+
+            nextLevel() {
+                if(this.levelIndex < LEVELS.length - 1) {
+                    this.loadLevel(this.levelIndex + 1);
+                }
+            },
+
+            // --- Rendering ---
+            renderGrid() {
+                const container = document.getElementById('grid-container');
+                container.innerHTML = '';
+                container.style.gridTemplateColumns = `repeat(${this.cols}, auto)`;
+
+                for(let y=0; y<this.rows; y++) {
+                    for(let x=0; x<this.cols; x++) {
+                        const cell = document.createElement('div');
+                        const type = this.grid[y][x];
+                        let className = 'cell ';
+                        
+                        if(type === '#') className += 'cell-water';
+                        else if(type === '.' || type === 'S' || type === 'E') className += 'cell-path';
+                        else className += 'cell-wall';
+                        
+                        cell.className = className;
+                        cell.dataset.x = x;
+                        cell.dataset.y = y;
+
+                        if(type === 'S') {
+                            const marker = document.createElement('div');
+                            marker.style.cssText = 'width:8px; height:8px; background:rgba(0,0,0,0.2); border-radius:50%;';
+                            cell.appendChild(marker);
+                        }
+                        
+                        if(type === 'E') {
+                            const star = document.createElement('div');
+                            star.innerHTML = '<svg viewBox="0 0 24 24" class="star" style="width:32px; height:32px; fill:currentColor; stroke:none;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+                            cell.appendChild(star);
+                        }
+
+                        container.appendChild(cell);
+                    }
+                }
+                this.renderPlayer();
+            },
+
+            renderPlayer() {
+                const old = document.querySelector('.player');
+                if(old) old.remove();
+
+                const {x, y} = this.playerPos;
+                const cell = document.querySelector(`.cell[data-x="${x}"][data-y="${y}"]`);
+                if(cell) {
+                    const player = document.createElement('div');
+                    player.className = 'player';
+                    player.innerHTML = `
+                        <div class="antenna"></div>
+                        <div class="eyes">
+                            <div class="eye"></div>
+                            <div class="eye"></div>
+                        </div>
+                    `;
+                    cell.appendChild(player);
+                }
+            },
+
+            renderProgram() {
+                const list = document.getElementById('program-list');
+                list.innerHTML = '';
+                
+                if(this.program.length === 0) {
+                    list.innerHTML = '<div style="width:100%; text-align:center; color:#cbd5e1; margin-top:20px; font-style:italic;">กดลูกศรด้านล่างเพื่อเพิ่มคำสั่ง...</div>';
+                    return;
+                }
+
+                this.program.forEach((cmd, idx) => {
+                    const btn = document.createElement('div');
+                    btn.className = `cmd-block cmd-${cmd} ${idx === this.stepIndex ? 'active' : ''}`;
+                    let svg = '';
+                    if(cmd === 'UP') svg = '<line x1="12" y1="19" x2="12" y2="5"></line><polyline points="5 12 12 5 19 12"></polyline>';
+                    if(cmd === 'DOWN') svg = '<line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline>';
+                    if(cmd === 'LEFT') svg = '<line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline>';
+                    if(cmd === 'RIGHT') svg = '<line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline>';
+                    btn.innerHTML = `<svg viewBox="0 0 24 24">${svg}</svg>`;
+                    btn.onclick = () => this.removeCommand(idx);
+                    list.appendChild(btn);
+                });
+                const area = document.querySelector('.program-area');
+                area.scrollTop = area.scrollHeight;
+            },
+
+            updateUI() {
+                const btnRun = document.getElementById('btn-run');
+                btnRun.disabled = this.program.length === 0 || this.state === 'running';
+            },
+            
+            setupListeners() {
+                document.getElementById('btn-mute').onclick = (e) => {
+                    this.sound.muted = !this.sound.muted;
+                    e.currentTarget.style.color = this.sound.muted ? '#ef4444' : '#64748b';
+                };
+
+                document.getElementById('btn-level-menu').onclick = () => {
+                    document.getElementById('level-menu').classList.add('show');
+                };
+            },
+
+            renderLevelMenu() {
+                const grid = document.getElementById('level-grid');
+                grid.innerHTML = '';
+                LEVELS.forEach((_, idx) => {
+                    const btn = document.createElement('div');
+                    btn.className = `level-btn ${idx === this.levelIndex ? 'active' : ''}`;
+                    btn.innerText = idx + 1;
+                    btn.onclick = () => {
+                        this.loadLevel(idx);
+                        document.getElementById('level-menu').classList.remove('show');
+                        this.sound.play('click');
+                    };
+                    grid.appendChild(btn);
+                });
+            }
+        };
+
+        // Initialize with data waiting
+        async function waitForData() {
+            if(!sessionStorage.getItem('coding_student_id')) return 0;
+            // Wait up to 3 seconds for data
+            for(let i=0; i<30; i++) {
+                if(DataManager.currentUser) return DataManager.getLevel('icon');
+                await new Promise(r => setTimeout(r, 100));
+            }
+            return 0; 
+        }
+
+        window.onload = async () => {
+            const savedLevel = await waitForData();
+            game.init(savedLevel);
+        };
+
+    </script>
+    
+    <style>
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+    </style>
+</body>
+</html>

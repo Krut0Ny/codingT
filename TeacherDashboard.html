@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <title>ระบบติดตามผลการเรียน - Coding Academy</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <!-- DataManager (ต้องวางไฟล์ DataManager.js ไว้ในโฟลเดอร์เดียวกัน) -->
+    <script src="DataManager.js"></script> 
+    
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f1f5f9; padding: 20px; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #1e293b; display: flex; align-items: center; gap: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+        th { background: #f8fafc; color: #64748b; font-weight: bold; }
+        tr:hover { background: #f1f5f9; }
+        .badge { padding: 4px 8px; border-radius: 12px; font-size: 0.8em; color: white; font-weight: bold; display: inline-block; min-width: 50px; text-align: center; }
+        .b-icon { background: #facc15; color: #854d0e; }
+        .b-block { background: #4ade80; color: #14532d; }
+        .b-text { background: #38bdf8; color: #0c4a6e; }
+        .search-box { padding: 10px; width: 100%; max-width: 300px; border: 1px solid #cbd5e1; border-radius: 5px; margin-bottom: 10px; }
+        .refresh-btn { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; float: right; transition: 0.2s; }
+        .refresh-btn:hover { background: #2563eb; }
+        .status-msg { text-align: center; padding: 20px; color: #64748b; }
+        .error-msg { color: #ef4444; background: #fee2e2; padding: 10px; border-radius: 5px; border: 1px solid #fca5a5; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button class="refresh-btn" onclick="loadData()">🔄 รีเฟรชข้อมูล</button>
+        <h1>👨‍🏫 แดชบอร์ดคุณครู</h1>
+        <p>รายชื่อนักเรียนและความคืบหน้าล่าสุด</p>
+        
+        <input type="text" id="searchInput" class="search-box" placeholder="🔍 ค้นหารหัสนักเรียน..." onkeyup="filterTable()">
+
+        <table id="studentTable">
+            <thead>
+                <tr>
+                    <th>รหัสนักเรียน</th>
+                    <th>Icon (เต็ม 20)</th>
+                    <th>Block (เต็ม 100)</th>
+                    <th>Text (เต็ม 50)</th>
+                    <th>เข้าใช้งานล่าสุด</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <tr><td colspan="5" class="status-msg">⏳ กำลังเตรียมระบบ...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // ใช้ window.onload เพื่อให้มั่นใจว่าไฟล์ script ทั้งหมดโหลดเสร็จก่อน
+        window.onload = function() {
+            setTimeout(loadData, 500);
+        };
+
+        async function loadData() {
+            const tbody = document.getElementById('tableBody');
+
+            // 1. เช็คว่าโหลดไฟล์ DataManager.js ติดหรือไม่
+            if (typeof DataManager === 'undefined') {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="status-msg">
+                            <div class="error-msg">
+                                ❌ <b>ไม่พบไฟล์ DataManager.js</b><br>
+                                กรุณาตรวจสอบว่าไฟล์ <code>DataManager.js</code> อยู่ในโฟลเดอร์เดียวกับไฟล์นี้
+                            </div>
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            // 2. เช็คการเชื่อมต่อ Firebase
+            if (!DataManager.db && DataManager.isOnline) {
+                // ถ้า isOnline เป็น true แต่ db ไม่มี แสดงว่ากำลังโหลด หรือมีปัญหา config
+                tbody.innerHTML = '<tr><td colspan="5" class="status-msg">⏳ กำลังเชื่อมต่อฐานข้อมูล... (กรุณารอสักครู่)</td></tr>';
+                // ลองเรียกใหม่ในอีก 1 วินาที
+                setTimeout(loadData, 1000); 
+                return;
+            }
+
+            if (!DataManager.db) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="5" class="status-msg">
+                            <div class="error-msg" style="color:orange; border-color:orange; background:#fff7ed;">
+                                ⚠️ <b>โหมดออฟไลน์ (Offline Mode)</b><br>
+                                ไม่ได้เชื่อมต่อ Firebase หรือยังไม่ได้ตั้งค่า Config<br>
+                                (หน้านี้จะแสดงข้อมูลไม่ได้หากไม่ได้เชื่อมต่อ Cloud)
+                            </div>
+                        </td>
+                    </tr>`;
+                return;
+            }
+
+            tbody.innerHTML = '<tr><td colspan="5" class="status-msg">🔄 กำลังดึงข้อมูลนักเรียน...</td></tr>';
+
+            try {
+                const snapshot = await DataManager.db.collection("students").get();
+                
+                if (snapshot.empty) {
+                    tbody.innerHTML = '<tr><td colspan="5" class="status-msg">📭 ยังไม่มีข้อมูลนักเรียนในระบบ</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = ''; // เคลียร์ข้อความโหลด
+                
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    let lastLogin = '-';
+                    if (data.lastLogin) {
+                        const d = new Date(data.lastLogin);
+                        lastLogin = d.toLocaleDateString('th-TH') + ' ' + d.toLocaleTimeString('th-TH', {hour: '2-digit', minute:'2-digit'});
+                    }
+                    
+                    const row = `
+                        <tr>
+                            <td style="font-weight:bold; color:#334155;">${doc.id}</td>
+                            <td><span class="badge b-icon">Lv. ${data.iconLevel || 0}</span></td>
+                            <td><span class="badge b-block">Lv. ${data.blockLevel || 0}</span></td>
+                            <td><span class="badge b-text">Lv. ${data.textLevel || 0}</span></td>
+                            <td style="color:#64748b; font-size:0.9em;">${lastLogin}</td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            } catch (e) {
+                console.error(e);
+                tbody.innerHTML = `<tr><td colspan="5" class="status-msg"><div class="error-msg">เกิดข้อผิดพลาด: ${e.message}</div></td></tr>`;
+            }
+        }
+
+        function filterTable() {
+            const input = document.getElementById("searchInput");
+            const filter = input.value.toUpperCase();
+            const table = document.getElementById("studentTable");
+            const tr = table.getElementsByTagName("tr");
+
+            // เริ่มวนลูปที่ index 1 เพราะข้ามส่วน loading/error message (ถ้ามี) หรือ header
+            // แต่เนื่องจากเรา replace tbody content การเช็ค tr ใน tbody จะแม่นยำกว่า
+            const rows = document.getElementById('tableBody').getElementsByTagName('tr');
+
+            for (let i = 0; i < rows.length; i++) {
+                // ข้ามแถวที่เป็นข้อความสถานะ (ที่มี class status-msg)
+                if (rows[i].querySelector('.status-msg')) continue;
+
+                const td = rows[i].getElementsByTagName("td")[0]; // ช่องรหัสนักเรียน
+                if (td) {
+                    const txtValue = td.textContent || td.innerText;
+                    rows[i].style.display = txtValue.toUpperCase().indexOf(filter) > -1 ? "" : "none";
+                }
+            }
+        }
+    </script>
+</body>
+</html>

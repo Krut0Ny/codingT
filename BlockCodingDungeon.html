@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Block Coding Dungeon (Age 8-12)</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="DataManager.js"></script>
+
+    <style>
+        :root {
+            --bg-dark: #1e1e2e;
+            --bg-panel: #2d2b42;
+            --primary: #4ade80;
+            --accent: #facc15;
+            --danger: #ef4444;
+            --block-move: #3b82f6;
+            --block-turn: #8b5cf6;
+            --block-event: #f59e0b;
+            --grid-line: rgba(255,255,255,0.1);
+        }
+
+        * { box-sizing: border-box; user-select: none; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        
+        body { margin: 0; padding: 0; height: 100vh; background: var(--bg-dark); color: white; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* --- Header --- */
+        header { 
+            height: 60px; background: #11111b; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; border-bottom: 2px solid #444;
+        }
+        .logo { font-weight: bold; font-size: 1.2rem; display: flex; items-center; gap: 10px; color: var(--accent); }
+        .level-badge { background: #444; padding: 5px 15px; border-radius: 20px; font-weight: bold; }
+        .controls { display: flex; gap: 10px; }
+
+        /* --- Main Layout --- */
+        main { flex: 1; display: flex; overflow: hidden; }
+
+        /* 1. Toolbox (Left) */
+        .toolbox { 
+            width: 200px; background: var(--bg-panel); border-right: 1px solid #444; padding: 1rem; display: flex; flex-direction: column; gap: 10px;
+        }
+        .toolbox-title { font-size: 0.8rem; text-transform: uppercase; color: #aaa; margin-bottom: 5px; }
+
+        /* 2. Workspace (Center) */
+        .workspace { 
+            flex: 1; background: #181825; position: relative; 
+            background-image: radial-gradient(#333 1px, transparent 1px);
+            background-size: 20px 20px;
+            display: flex; flex-direction: column;
+        }
+        .drop-zone {
+            flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 0; align-items: flex-start;
+        }
+        .start-block {
+            background: #eab308; color: black; padding: 10px 15px; 
+            border-radius: 8px 8px 0 0; font-weight: bold; 
+            box-shadow: 0 4px 0 #ca8a04; margin-bottom: -4px; z-index: 10;
+            display: flex; gap: 10px; align-items: center; width: 180px;
+        }
+
+        /* 3. Stage (Right) */
+        .stage { 
+            width: 450px; background: #111; border-left: 2px solid #444; 
+            display: flex; flex-direction: column; padding: 20px; 
+            align-items: center; justify-content: flex-start;
+            position: relative;
+        }
+        
+        /* --- Blocks --- */
+        .block {
+            padding: 10px 15px; border-radius: 4px; color: white; cursor: grab;
+            font-size: 0.9rem; font-weight: 500; width: 160px;
+            box-shadow: 0 3px 0 rgba(0,0,0,0.3); margin-bottom: 5px;
+            display: flex; align-items: center; gap: 8px; position: relative;
+            transition: transform 0.1s;
+        }
+        .block:active { cursor: grabbing; transform: scale(1.02); z-index: 100; }
+        
+        /* Puzzle Connector Illusion */
+        .block-ws {
+            width: 180px; margin-bottom: -4px; border-radius: 0;
+            clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 35% 100%, 30% 90%, 20% 90%, 15% 100%, 0% 100%);
+            /* Simplified puzzle shape for CSS */
+            position: relative; z-index: 5;
+        }
+        .block-ws:last-child { border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; margin-bottom: 0; }
+        
+        .b-move { background: var(--block-move); border: 1px solid #2563eb; }
+        .b-turn { background: var(--block-turn); border: 1px solid #7c3aed; }
+        .b-event { background: var(--block-event); border: 1px solid #d97706; }
+        
+        .block.highlight { box-shadow: 0 0 0 3px white; z-index: 20; }
+
+        /* --- Grid & Game Elements --- */
+        #game-grid {
+            display: grid; gap: 2px; background: #222; border: 4px solid #555; border-radius: 4px;
+            position: relative; transition: transform 0.5s;
+        }
+        .cell {
+            width: 50px; height: 50px; background: #333; position: relative; overflow: hidden;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .cell-floor { background: #444; border-top: 2px solid #555; }
+        .cell-wall { 
+            background: #2a2a2a; 
+            background-image: linear-gradient(45deg, #222 25%, transparent 25%), linear-gradient(-45deg, #222 25%, transparent 25%);
+            background-size: 10px 10px;
+        }
+        .cell-lava { 
+            background: #ef4444; 
+            background-image: radial-gradient(circle, #fca5a5 20%, transparent 20%);
+            background-size: 15px 15px;
+            animation: lavaFlow 2s infinite linear;
+        }
+        .cell-start { background: #444; }
+        .cell-portal { 
+            background: #444; 
+        }
+        .portal-vortex {
+            width: 30px; height: 30px; border-radius: 50%;
+            border: 4px dashed #a855f7; animation: spin 4s infinite linear;
+        }
+        
+        /* Items */
+        .star { width: 30px; height: 30px; fill: var(--accent); animation: float 2s infinite ease-in-out; filter: drop-shadow(0 0 5px var(--accent)); }
+        
+        /* Player */
+        #player {
+            width: 40px; height: 40px; position: absolute; z-index: 50;
+            background: white; border-radius: 8px;
+            transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), left 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), transform 0.4s;
+            display: flex; justify-content: center; align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+        }
+        /* Player Face based on rotation */
+        .face { width: 100%; height: 100%; position: relative; }
+        .face::before { content: ''; position: absolute; top: 10px; left: 8px; width: 6px; height: 6px; background: #333; border-radius: 50%; box-shadow: 20px 0 0 #333; } /* Eyes */
+        .face::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 8px; background: #ef4444; border-radius: 8px 8px 0 0; } /* Hat/Top */
+
+        /* Monster */
+        #monster {
+            width: 40px; height: 40px; position: absolute; z-index: 60;
+            display: flex; justify-content: center; align-items: center;
+            transition: top 1s linear, left 1s linear; 
+            display: none;
+            filter: drop-shadow(0 0 5px #a855f7);
+        }
+        #monster::before {
+            content: '👾'; font-size: 30px;
+            animation: bounce 1s infinite;
+        }
+
+        /* Warning Banner */
+        .warning-banner {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: rgba(239, 68, 68, 0.95); color: white; padding: 8px 20px;
+            border-radius: 20px; font-weight: bold; font-size: 0.9rem;
+            z-index: 200; display: none; white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            animation: pulseRed 1s infinite;
+            border: 2px solid #fecaca;
+        }
+
+        /* Buttons */
+        .btn { border: none; padding: 10px 20px; border-radius: 8px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: 0.1s; color: white; font-size: 1rem; }
+        .btn-run { background: var(--primary); color: #064e3b; box-shadow: 0 4px 0 #166534; width: 100%; justify-content: center; margin-top: auto;}
+        .btn-run:active { transform: translateY(4px); box-shadow: none; }
+        .btn-run:disabled { background: #555; color: #888; box-shadow: none; cursor: not-allowed; }
+        
+        .btn-reset { background: #444; }
+        .btn-reset:hover { background: #555; }
+        
+        .btn-trash { background: #ef4444; padding: 10px; width: 100%; margin-top: 10px; justify-content: center; }
+
+        /* Modals */
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); display: flex; justify-content: center; align-items: center; z-index: 100; opacity: 0; pointer-events: none; transition: 0.3s; backdrop-filter: blur(5px); }
+        .modal.show { opacity: 1; pointer-events: auto; }
+        .modal-box { background: #2d2b42; padding: 30px; border-radius: 15px; text-align: center; border: 2px solid #555; width: 300px; transform: scale(0.8); transition: 0.3s; }
+        .modal.show .modal-box { transform: scale(1); }
+        
+        #loading-overlay { position: fixed; inset: 0; background: rgba(30,30,46,0.95); z-index: 200; display: flex; justify-content: center; align-items: center; flex-direction: column; gap: 10px; color: #4ade80; font-weight: bold; }
+
+        /* Animations */
+        @keyframes lavaFlow { 0% { background-position: 0 0; } 100% { background-position: 30px 0; } }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+        @keyframes pulseRed { 0% { transform: translateX(-50%) scale(1); } 50% { transform: translateX(-50%) scale(1.05); } 100% { transform: translateX(-50%) scale(1); } }
+
+        .instruction {
+            background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; font-size: 0.9rem; color: #ccc; margin-bottom: 10px; border-left: 3px solid var(--accent); width: 100%;
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+    <div>Loading Dungeon Data...</div>
+    <svg style="animation: spin 1s linear infinite" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg>
+</div>
+
+<header>
+    <div class="logo">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M15 9h6"/><path d="M9 15H3"/></svg>
+        BlockDungeon
+    </div>
+    <div class="level-badge" id="level-display">Level 1 / 100</div>
+    <div class="controls">
+        <button class="btn btn-reset" onclick="game.reloadLevel()">↻ รีเซ็ต</button>
+        <button class="btn btn-reset" onclick="game.toggleSound()">🔊 เสียง</button>
+    </div>
+</header>
+
+<main>
+    <!-- Left: Toolbox -->
+    <div class="toolbox" id="toolbox">
+        <div class="toolbox-title">คำสั่งเคลื่อนที่</div>
+        
+        <div class="block b-move" draggable="true" ondragstart="drag(event)" data-cmd="FORWARD">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            เดินหน้า
+        </div>
+        
+        <div class="block b-turn" draggable="true" ondragstart="drag(event)" data-cmd="LEFT">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                <path d="M3 3v5h5"/>
+            </svg>
+            หันซ้าย
+        </div>
+        
+        <div class="block b-turn" draggable="true" ondragstart="drag(event)" data-cmd="RIGHT">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                <path d="M21 3v5h-5"/>
+            </svg>
+            หันขวา
+        </div>
+
+        <div style="height: 20px;"></div>
+        <div class="toolbox-title">คำสั่งพิเศษ</div>
+        
+        <div class="block b-event" draggable="true" ondragstart="drag(event)" data-cmd="TELEPORT">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M12 2v20M2 12h20"/><circle cx="12" cy="12" r="10"/></svg>
+            วาร์ป (Portal)
+        </div>
+
+        <div style="flex:1"></div>
+        <button class="btn btn-trash" onclick="ui.clearWorkspace()" ondragover="allowDrop(event)" ondrop="ui.trashDrop(event)">
+            🗑️ ลบทั้งหมด
+        </button>
+    </div>
+
+    <!-- Center: Workspace -->
+    <div class="workspace">
+        <div class="drop-zone" id="drop-zone" ondrop="drop(event)" ondragover="allowDrop(event)">
+            <div class="start-block">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                เมื่อเริ่มทำงาน
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Stage -->
+    <div class="stage">
+        <div class="warning-banner" id="warning-msg">⚠️ ระวังให้รีบหาทางเดินก่อน Monster จะออกมา!</div>
+        
+        <div class="instruction" id="instruction-text">
+            พาหุ่นยนต์ไปเก็บดาว! ใช้บล็อก "เดินหน้า" และ "หัน"
+        </div>
+
+        <div id="game-grid">
+            <div id="player">
+                <div class="face"></div>
+            </div>
+            <div id="monster"></div>
+        </div>
+
+        <button class="btn btn-run" id="btn-run" onclick="game.runCode()">
+            ▶ เริ่มทำงาน
+        </button>
+    </div>
+</main>
+
+<!-- Win Modal -->
+<div class="modal" id="modal-win">
+    <div class="modal-box" style="border-color: var(--primary);">
+        <h2 style="color: var(--primary);">ภารกิจสำเร็จ! 🎉</h2>
+        <p>คุณเก็บดาวได้แล้ว</p>
+        <button class="btn btn-run" onclick="game.nextLevel()">ด่านถัดไป ➜</button>
+    </div>
+</div>
+
+<!-- Fail Modal -->
+<div class="modal" id="modal-fail">
+    <div class="modal-box" style="border-color: var(--danger);">
+        <h2 style="color: var(--danger);">โอ๊ะโอ! 💥</h2>
+        <p id="fail-msg">ชนกำแพง หรือ ตกลาวา</p>
+        <button class="btn btn-reset" style="width:100%; justify-content: center;" onclick="game.reloadLevel()">ลองอีกครั้ง</button>
+    </div>
+</div>
+
+<script>
+    const LEVELS = [
+        { map: [[1,1,1],[1,3,4],[1,1,1]], w:3, h:3, dir:1, tip:"ลากบล็อก 'เดินหน้า' มาต่อกัน" }, 
+        { map: [[1,1,1,1],[1,3,0,4],[1,1,1,1]], w:4, h:3, dir:1, tip:"ต้องเดินกี่ช่องนะ?" }, 
+        { map: [[1,1,1],[1,3,1],[1,0,4],[1,1,1]], w:3, h:4, dir:1, tip:"ใช้ 'หันขวา' แล้วค่อยเดิน" }, 
+        { map: [[1,1,1,1],[1,3,0,1],[1,1,0,4],[1,1,1,1]], w:4, h:4, dir:1, tip:"เดินหน้า, หัน, แล้วเดินต่อ" }, 
+        { map: [[1,1,1,1,1],[1,3,0,0,1],[1,1,1,0,4],[1,1,1,1,1]], w:5, h:4, dir:1, tip:"ระวังชนกำแพง!" }, 
+        { map: [[1,1,1],[1,4,1],[1,0,1],[1,3,1]], w:3, h:4, dir:0, tip:"หุ่นยนต์หันหน้าขึ้นบนอยู่แล้ว" }, 
+        { map: [[1,1,1,1],[1,4,0,3],[1,1,1,1]], w:4, h:3, dir:3, tip:"หันหน้าไปทางซ้าย" }, 
+        { map: [[1,1,1,1],[1,3,2,4],[1,0,0,0],[1,1,1,1]], w:4, h:4, dir:1, tip:"อย่าเดินลุยลาวา! อ้อมไปข้างล่าง" }, 
+        { map: [[1,1,1,1],[1,3,0,1],[1,2,0,4],[1,1,1,1]], w:4, h:4, dir:1, tip:"หันซ้าย หันขวา ให้ถูกต้อง" }, 
+        { map: [[1,1,1,1,1],[1,4,2,0,3],[1,0,1,0,1],[1,0,0,0,1]], w:5, h:4, dir:3, tip:"เขาวงกตเล็กๆ" }, 
+        { map: [[1,1,1,1,1,1],[1,3,0,8,1,4],[1,1,1,1,9,0],[1,1,1,1,1,1]], w:6, h:4, dir:1, tip:"เดินเข้าช่องวาร์ป แล้วใช้บล็อก 'วาร์ป'" }, 
+        { map: [[1,1,1,1],[1,3,2,4],[1,8,1,9],[1,1,1,1]], w:4, h:4, dir:2, tip:"ข้ามลาวาด้วยวาร์ป" }, 
+        { map: [[1,1,1,1,1],[1,3,0,0,8],[1,1,1,1,1],[1,4,0,9,1]], w:5, h:4, dir:1, tip:"วาร์ปไปชั้นล่าง" }, 
+        { map: [[1,1,1],[4,2,3],[1,1,1]], w:3, h:3, dir:1, tip:"ด่านหลอก! วาร์ปไม่มี (ใช้หันหลังกลับ)" }, 
+        { map: [[1,1,1,1,1],[1,3,0,1,4],[1,1,0,1,0],[1,8,0,0,9],[1,1,1,1,1]], w:5, h:5, dir:1, tip:"วางแผนให้ดี" }, 
+        { map: [[1,1,1,1],[1,3,2,1],[1,0,2,1],[1,8,2,9],[1,1,4,1]], w:4, h:5, dir:2, tip:"ทางยาวสู่ชัยชนะ" }, 
+        { map: [[1,1,1,1,1,1],[1,3,0,0,0,8],[1,1,1,1,1,1],[1,4,0,0,0,9],[1,1,1,1,1,1]], w:6, h:5, dir:1, tip:"วิ่งวนไปมา" }, 
+        { map: [[1,1,1,1,1],[1,3,0,1,4],[1,0,1,1,0],[1,0,1,1,0],[1,8,0,0,9]], w:5, h:5, dir:2, tip:"ระวังหลงทาง" }, 
+        { map: [[1,1,1,1,1],[1,3,2,2,4],[1,0,1,1,0],[1,0,0,0,0],[1,1,1,1,1]], w:5, h:5, dir:1, tip:"อ้อมโลก" }, 
+        { map: [[1,1,1,1,1,1],[1,3,0,8,2,4],[1,1,1,0,1,2],[1,9,0,0,1,0],[1,1,1,1,1,1]], w:6, h:5, dir:1, tip:"ด่านสุดท้าย! ใช้ทุกอย่างที่เรียนมา" } 
+    ];
+
+    function generateProceduralLevels() {
+        for (let i = 21; i <= 100; i++) {
+            let width, height, complexity;
+            let tip = "เส้นทางใหม่ๆ รออยู่!";
+            if (i <= 40) { width = 5; height = 5; complexity = 0; tip = `ด่านที่ ${i}: ฝึกฝนการเดินให้คล่อง`; } 
+            else if (i <= 70) { width = 6; height = 6; complexity = 1; tip = `ด่านที่ ${i}: ระวังลาวานะ!`; } 
+            else { width = 7; height = 7; complexity = 2; tip = `ด่านที่ ${i}: ภารกิจระดับสูง`; }
+            LEVELS.push(createProceduralLevel(width, height, complexity, i));
+        }
+    }
+
+    function createProceduralLevel(w, h, complexity, levelNum) {
+        let grid = Array(h).fill().map(() => Array(w).fill(1));
+        let startX = 1 + Math.floor(Math.random() * (w - 2));
+        let startY = 1 + Math.floor(Math.random() * (h - 2));
+        grid[startY][startX] = 3;
+        let currentX = startX, currentY = startY, minPath = w + h, maxAttempts = 200;
+        let path = [{x: startX, y: startY}];
+        while (path.length < minPath && maxAttempts > 0) {
+            maxAttempts--;
+            let dir = Math.floor(Math.random() * 4);
+            let dx = [0, 1, 0, -1][dir], dy = [-1, 0, 1, 0][dir];
+            let nx = currentX + dx, ny = currentY + dy;
+            if (nx > 0 && nx < w-1 && ny > 0 && ny < h-1) {
+                if (grid[ny][nx] === 1) {
+                    grid[ny][nx] = 0; path.push({x: nx, y: ny}); currentX = nx; currentY = ny;
+                } else if (Math.random() > 0.7) { currentX = nx; currentY = ny; }
+            }
+        }
+        let endNode = path[path.length - 1];
+        if (endNode.x === startX && endNode.y === startY) {
+            for(let p of path) if (Math.abs(p.x - startX) + Math.abs(p.y - startY) > 2) endNode = p;
+        }
+        grid[endNode.y][endNode.x] = 4;
+        if (complexity >= 1) {
+            for (let y = 1; y < h-1; y++) for (let x = 1; x < w-1; x++) if (grid[y][x] === 1 && Math.random() < 0.2) grid[y][x] = 2;
+        }
+        if (complexity >= 2) {
+            let floors = [];
+            for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (grid[y][x] === 0) floors.push({x, y});
+            if (floors.length >= 2) {
+                floors.sort(() => Math.random() - 0.5);
+                grid[floors[0].y][floors[0].x] = 8; grid[floors[1].y][floors[1].x] = 9;
+            }
+        }
+        return { map: grid, w: w, h: h, dir: Math.floor(Math.random() * 4), tip: `ด่านที่ ${levelNum}: ${complexity > 1 ? 'ใช้ประตูมิติให้เป็นประโยชน์' : 'หาทางไปให้ถึงดาว'}` };
+    }
+    generateProceduralLevels();
+
+    const ui = {
+        trashDrop(e) { e.preventDefault(); this.clearWorkspace(); },
+        clearWorkspace() {
+            const zone = document.getElementById('drop-zone');
+            while (zone.children.length > 1) zone.removeChild(zone.lastChild);
+        }
+    };
+    function allowDrop(ev) { ev.preventDefault(); }
+    function drag(ev) {
+        ev.dataTransfer.setData("cmd", ev.target.dataset.cmd);
+        ev.dataTransfer.setData("text", ev.target.innerHTML);
+        ev.dataTransfer.setData("class", ev.target.className);
+    }
+    function drop(ev) {
+        ev.preventDefault();
+        const cmd = ev.dataTransfer.getData("cmd");
+        const html = ev.dataTransfer.getData("text");
+        const cls = ev.dataTransfer.getData("class");
+        const newBlock = document.createElement("div");
+        newBlock.className = cls.replace("block", "block block-ws");
+        newBlock.innerHTML = html;
+        newBlock.dataset.cmd = cmd;
+        newBlock.draggable = true;
+        newBlock.ondragstart = function(e) { e.target.style.opacity = '0.5'; setTimeout(() => e.target.remove(), 0); };
+        document.getElementById('drop-zone').appendChild(newBlock);
+        game.playSound('click');
+    }
+
+    const game = {
+        level: 0, grid: [], player: { x:0, y:0, dir:1 }, monster: { x:-1, y:-1 }, startState: {}, isRunning: false, soundEnabled: true, audioCtx: null, timers: [], warningShown: false, monsterActive: false,
+
+        async init(startLevel) {
+            this.loadLevel(startLevel || 0);
+            document.getElementById('loading-overlay').style.display = 'none';
+        },
+
+        loadLevel(idx) {
+            this.clearTimers();
+            this.level = idx;
+            const data = LEVELS[idx];
+            const container = document.getElementById('game-grid');
+            container.innerHTML = '<div id="player"><div class="face"></div></div><div id="monster"></div>';
+            container.style.gridTemplateColumns = `repeat(${data.w}, 50px)`;
+            container.style.width = `${data.w * 50 + (data.w-1)*2}px`;
+            this.grid = [];
+            for(let y=0; y<data.h; y++) {
+                this.grid[y] = [];
+                for(let x=0; x<data.w; x++) {
+                    const code = data.map[y][x];
+                    this.grid[y][x] = code;
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    if(code === 1) cell.classList.add('cell-wall');
+                    else if(code === 2) cell.classList.add('cell-lava');
+                    else {
+                        cell.classList.add('cell-floor');
+                        if(code === 3) { cell.classList.add('cell-start'); this.player.x = x; this.player.y = y; }
+                        if(code === 4) cell.innerHTML = '<svg class="star" viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>';
+                        if(code === 8 || code === 9) { cell.classList.add('cell-portal'); cell.innerHTML = `<div class="portal-vortex" style="border-color:${code === 8 ? '#a855f7' : '#ec4899'}"></div>`; }
+                    }
+                    container.appendChild(cell);
+                }
+            }
+            this.player.dir = data.dir;
+            this.startState = { ...this.player };
+            this.updatePlayerSprite();
+            this.monsterActive = false;
+            this.warningShown = false;
+            document.getElementById('monster').style.display = 'none';
+            document.getElementById('warning-msg').style.display = 'none';
+            document.getElementById('level-display').innerText = `Level ${idx+1} / 100`;
+            document.getElementById('instruction-text').innerText = data.tip;
+            document.getElementById('modal-win').classList.remove('show');
+            document.getElementById('modal-fail').classList.remove('show');
+            document.getElementById('btn-run').disabled = false;
+            this.startLevelTimer();
+        },
+
+        startLevelTimer() {
+            if (this.level < 9) return;
+            const startTime = Date.now();
+            const timerId = setInterval(() => {
+                const elapsed = (Date.now() - startTime) / 1000;
+                if (elapsed > 20 && !this.warningShown) { document.getElementById('warning-msg').style.display = 'block'; this.warningShown = true; this.playSound('bump'); }
+                if (elapsed > 30 && !this.monsterActive) { this.spawnMonster(); }
+            }, 1000);
+            this.timers.push(timerId);
+        },
+
+        clearTimers() { this.timers.forEach(t => clearInterval(t)); this.timers = []; },
+
+        spawnMonster() {
+            this.monsterActive = true;
+            document.getElementById('warning-msg').style.display = 'none';
+            let bestX = 0, bestY = 0, maxDist = -1;
+            for(let y=0; y<this.grid.length; y++) {
+                for(let x=0; x<this.grid[0].length; x++) {
+                    if (this.grid[y][x] === 0 || this.grid[y][x] === 4) {
+                         const dist = Math.abs(x - this.player.x) + Math.abs(y - this.player.y);
+                         if (dist > maxDist) { maxDist = dist; bestX = x; bestY = y; }
+                    }
+                }
+            }
+            this.monster = { x: bestX, y: bestY };
+            this.updateMonsterSprite();
+            document.getElementById('monster').style.display = 'flex';
+            this.playSound('teleport');
+            const moveId = setInterval(() => { this.moveMonster(); }, 1500); 
+            this.timers.push(moveId);
+        },
+
+        moveMonster() {
+            if (!this.monsterActive) return;
+            const dx = this.player.x - this.monster.x;
+            const dy = this.player.y - this.monster.y;
+            let targetX = this.monster.x, targetY = this.monster.y;
+            if (Math.abs(dx) > Math.abs(dy)) targetX += Math.sign(dx); else targetY += Math.sign(dy);
+            if (!this.isWalkable(targetX, targetY)) {
+                if (Math.abs(dx) > Math.abs(dy)) targetY += Math.sign(dy); else targetX += Math.sign(dx);
+            }
+            if (this.isWalkable(targetX, targetY)) { this.monster.x = targetX; this.monster.y = targetY; this.updateMonsterSprite(); }
+            this.checkMonsterCollision();
+        },
+
+        checkMonsterCollision() {
+            if (this.monsterActive && this.monster.x === this.player.x && this.monster.y === this.player.y) {
+                this.fail("โดนปีศาจจับได้! ช้าเกินไปแล้ว");
+                this.isRunning = false; this.clearTimers();
+            }
+        },
+
+        updatePlayerSprite() {
+            const el = document.getElementById('player');
+            el.style.left = `${this.player.x * 52}px`; el.style.top = `${this.player.y * 52}px`;
+            el.style.transform = `rotate(${ (this.player.dir - 1) * 90 }deg)`; 
+        },
+        updateMonsterSprite() {
+            const el = document.getElementById('monster');
+            el.style.left = `${this.monster.x * 52}px`; el.style.top = `${this.monster.y * 52}px`;
+        },
+
+        async runCode() {
+            if(this.isRunning) return;
+            this.isRunning = true;
+            document.getElementById('btn-run').disabled = true;
+            const blocks = document.querySelectorAll('#drop-zone .block-ws');
+            const commands = Array.from(blocks).map(b => ({ cmd: b.dataset.cmd, el: b }));
+            if(commands.length === 0) { alert("วางบล็อกคำสั่งก่อนนะครับ"); this.isRunning = false; document.getElementById('btn-run').disabled = false; return; }
+            for(let i=0; i<commands.length; i++) {
+                if(!this.isRunning) break;
+                if(i > 0) commands[i-1].el.classList.remove('highlight');
+                commands[i].el.classList.add('highlight');
+                await this.executeCommand(commands[i].cmd);
+                await new Promise(r => setTimeout(r, 600)); 
+            }
+            if(commands.length > 0) commands[commands.length-1].el.classList.remove('highlight');
+            this.checkResult();
+            this.isRunning = false;
+        },
+
+        async executeCommand(cmd) {
+            if (!this.isRunning) return;
+            if(cmd === 'LEFT') { this.player.dir = (this.player.dir - 1 + 4) % 4; this.playSound('turn'); }
+            else if(cmd === 'RIGHT') { this.player.dir = (this.player.dir + 1) % 4; this.playSound('turn'); }
+            else if(cmd === 'FORWARD') {
+                let dx = [0, 1, 0, -1][this.player.dir]; // Map dir 0,1,2,3 to deltas is tricky with current dir logic
+                // Current logic: dir 0=N, 1=E, 2=S, 3=W. 
+                // But rotation logic was (dir-1)*90. 1->0deg(Right). 0->-90(Up). Correct.
+                let dy = 0; dx = 0;
+                if(this.player.dir === 0) dy = -1; else if(this.player.dir === 1) dx = 1; else if(this.player.dir === 2) dy = 1; else if(this.player.dir === 3) dx = -1;
+                const nx = this.player.x + dx; const ny = this.player.y + dy;
+                if(this.isWalkable(nx, ny)) { this.player.x = nx; this.player.y = ny; this.playSound('move'); }
+                else { this.playSound('bump'); this.shakeScreen(); }
+            } else if(cmd === 'TELEPORT') {
+                const currentTile = this.grid[this.player.y][this.player.x];
+                if(currentTile === 8) this.findAndMoveToPortal(9); else if(currentTile === 9) this.findAndMoveToPortal(8); else this.playSound('fail'); 
+            }
+            this.updatePlayerSprite();
+            this.checkMonsterCollision();
+            if(this.grid[this.player.y][this.player.x] === 2) { this.fail("ร้อนจังเลย! ตกลาวาซะแล้ว"); this.isRunning = false; }
+        },
+
+        findAndMoveToPortal(targetId) {
+            for(let y=0; y<this.grid.length; y++) for(let x=0; x<this.grid[0].length; x++) if(this.grid[y][x] === targetId) { this.player.x = x; this.player.y = y; this.playSound('teleport'); return; }
+        },
+        isWalkable(x, y) {
+            if(y < 0 || y >= this.grid.length || x < 0 || x >= this.grid[0].length) return false;
+            return this.grid[y][x] !== 1;
+        },
+        checkResult() {
+            if(this.grid[this.player.y][this.player.x] === 4) {
+                this.playSound('win');
+                DataManager.saveProgress('block', this.level + 1);
+                document.getElementById('modal-win').classList.add('show');
+                this.clearTimers();
+            } else if (this.isRunning) { this.fail("ยังไปไม่ถึงดาว ลองเช็คคำสั่งใหม่นะ"); }
+        },
+        fail(msg) {
+            document.getElementById('fail-msg').innerText = msg;
+            document.getElementById('modal-fail').classList.add('show');
+            this.playSound('fail');
+        },
+        reloadLevel() {
+            this.isRunning = false; this.clearTimers();
+            this.player = { ...this.startState };
+            this.monsterActive = false; this.warningShown = false;
+            document.getElementById('monster').style.display = 'none';
+            document.getElementById('warning-msg').style.display = 'none';
+            this.updatePlayerSprite();
+            document.getElementById('modal-win').classList.remove('show');
+            document.getElementById('modal-fail').classList.remove('show');
+            document.getElementById('btn-run').disabled = false;
+            document.querySelectorAll('.highlight').forEach(el => el.classList.remove('highlight'));
+            this.startLevelTimer();
+        },
+        nextLevel() {
+            if(this.level < LEVELS.length - 1) { this.loadLevel(this.level + 1); ui.clearWorkspace(); }
+            else { alert("ยินดีด้วย! คุณผ่านครบทุกด่านแล้ว!"); }
+        },
+        shakeScreen() {
+            const stg = document.querySelector('.stage'); stg.style.transform = "translateX(5px)";
+            setTimeout(() => stg.style.transform = "translateX(-5px)", 50); setTimeout(() => stg.style.transform = "translateX(5px)", 100); setTimeout(() => stg.style.transform = "translateX(0)", 150);
+        },
+        initAudio() { if (!this.audioCtx) { this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } if (this.audioCtx.state === 'suspended') this.audioCtx.resume(); },
+        toggleSound() { this.soundEnabled = !this.soundEnabled; },
+        playSound(type) {
+            if(!this.soundEnabled) return; this.initAudio(); const ctx = this.audioCtx; const t = ctx.currentTime; const osc = ctx.createOscillator(); const gain = ctx.createGain(); osc.connect(gain); gain.connect(ctx.destination);
+            if(type === 'click') { osc.type = 'sine'; osc.frequency.setValueAtTime(600, t); gain.gain.setValueAtTime(0.1, t); osc.start(t); osc.stop(t+0.1); }
+            else if(type === 'move') { osc.type = 'triangle'; osc.frequency.setValueAtTime(150, t); gain.gain.setValueAtTime(0.1, t); osc.start(t); osc.stop(t+0.1); }
+            else if(type === 'turn') { osc.type = 'square'; osc.frequency.setValueAtTime(200, t); gain.gain.setValueAtTime(0.05, t); osc.start(t); osc.stop(t+0.1); }
+            else if(type === 'bump') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, t); gain.gain.setValueAtTime(0.2, t); osc.start(t); osc.stop(t+0.2); }
+            else if(type === 'teleport') { osc.type = 'sine'; osc.frequency.setValueAtTime(200, t); gain.gain.setValueAtTime(0.1, t); osc.start(t); osc.stop(t+0.5); }
+            else if(type === 'win') { [400, 500, 600, 800].forEach((f, i) => { const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = f; g.gain.setValueAtTime(0.1, t + i*0.1); o.start(t + i*0.1); o.stop(t + i*0.1 + 0.3); }); }
+            else if(type === 'fail') { osc.type = 'sawtooth'; osc.frequency.setValueAtTime(150, t); gain.gain.setValueAtTime(0.2, t); osc.start(t); osc.stop(t+0.5); }
+        }
+    };
+
+    async function waitForData() {
+        if(!sessionStorage.getItem('coding_student_id')) return 0;
+        for(let i=0; i<30; i++) {
+            if(DataManager.currentUser) return DataManager.getLevel('block');
+            await new Promise(r => setTimeout(r, 100));
+        }
+        return 0; 
+    }
+
+    window.onload = async () => {
+        const savedLevel = await waitForData();
+        game.init(savedLevel);
+    };
+</script>
+</body>
+</html>
