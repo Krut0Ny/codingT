@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coding Academy - เข้าสู่ระบบ</title>
+    
+    <!-- Firebase SDK (จำเป็นสำหรับระบบออนไลน์) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    
+    <!-- Script จัดการข้อมูลของเรา -->
+    <script src="DataManager.js"></script>
+
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --primary: #38bdf8;
+            --text: #f8fafc;
+        }
+        body { margin: 0; min-height: 100vh; background: var(--bg-gradient); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; flex-direction: column; }
+        
+        /* Login Box */
+        #login-section { text-align: center; background: var(--card-bg); padding: 3rem; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); box-shadow: 0 20px 50px rgba(0,0,0,0.3); max-width: 400px; width: 90%; }
+        input { width: 100%; padding: 15px; margin: 15px 0; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: white; font-size: 1.1rem; text-align: center; }
+        button.login-btn { width: 100%; padding: 15px; border-radius: 8px; border: none; background: var(--primary); color: #0f172a; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.2s; }
+        button.login-btn:hover { filter: brightness(1.1); }
+
+        /* Dashboard (Hidden by default) */
+        #dashboard-section { display: none; width: 100%; max-width: 1200px; padding: 2rem; text-align: center; }
+        .welcome-text { font-size: 1.5rem; margin-bottom: 2rem; color: #94a3b8; }
+        .welcome-text span { color: var(--primary); font-weight: bold; }
+        
+        .game-grid { display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; }
+        .game-card { background: var(--card-bg); padding: 2rem; border-radius: 15px; width: 300px; border: 1px solid rgba(255,255,255,0.1); transition: 0.3s; position: relative; }
+        .game-card:hover { transform: translateY(-10px); border-color: var(--primary); }
+        .progress-bar { height: 10px; background: #334155; border-radius: 5px; margin: 15px 0; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: 1s; }
+        .play-btn { display: block; padding: 10px; background: var(--primary); color: #0f172a; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 10px; }
+        
+        .logout-btn { position: absolute; top: 20px; right: 20px; background: transparent; border: 1px solid #ef4444; color: #ef4444; padding: 5px 15px; border-radius: 20px; cursor: pointer; }
+        .logout-btn:hover { background: #ef4444; color: white; }
+    </style>
+</head>
+<body>
+
+    <!-- ส่วนล็อกอิน -->
+    <div id="login-section">
+        <h1>🔐 Coding Academy</h1>
+        <p>กรอกรหัสนักเรียนเพื่อเข้าใช้งาน</p>
+        <input type="text" id="student-id" placeholder="เช่น 66001" onkeypress="if(event.key==='Enter') doLogin()">
+        <button class="login-btn" onclick="doLogin()">เข้าสู่ระบบ</button>
+        <p style="font-size:0.8rem; color:#64748b; margin-top:20px;">*ระบบจะจำเลเวลที่คุณเล่นถึงล่าสุดให้อัตโนมัติ</p>
+    </div>
+
+    <!-- ส่วนเลือกเกม (จะแสดงเมื่อล็อกอินผ่าน) -->
+    <div id="dashboard-section">
+        <button class="logout-btn" onclick="DataManager.logout()">ออกจากระบบ</button>
+        <div class="welcome-text">ยินดีต้อนรับ, <span id="user-display">Student</span></div>
+        
+        <div class="game-grid">
+            <!-- Game 1 -->
+            <div class="game-card">
+                <h2>Icon Adventure</h2>
+                <p>เหมาะสำหรับอายุ 5-7 ปี</p>
+                <div class="progress-bar"><div id="prog-icon" class="progress-fill" style="background:#facc15"></div></div>
+                <div id="text-icon" style="font-size:0.9rem; margin-bottom:10px;">ล่าสุด: ด่าน 0</div>
+                <a href="IconCodingAdventure.html" class="play-btn" style="background:#facc15">เล่นต่อ ▶</a>
+            </div>
+
+            <!-- Game 2 -->
+            <div class="game-card">
+                <h2>Block Dungeon</h2>
+                <p>เหมาะสำหรับอายุ 8-12 ปี</p>
+                <div class="progress-bar"><div id="prog-block" class="progress-fill" style="background:#4ade80"></div></div>
+                <div id="text-block" style="font-size:0.9rem; margin-bottom:10px;">ล่าสุด: ด่าน 0</div>
+                <a href="BlockCodingDungeon.html" class="play-btn" style="background:#4ade80">เล่นต่อ ▶</a>
+            </div>
+
+            <!-- Game 3 -->
+            <div class="game-card">
+                <h2>Text Mission</h2>
+                <p>เหมาะสำหรับอายุ 12-15 ปี</p>
+                <div class="progress-bar"><div id="prog-text" class="progress-fill" style="background:#38bdf8"></div></div>
+                <div id="text-text" style="font-size:0.9rem; margin-bottom:10px;">ล่าสุด: ด่าน 0</div>
+                <a href="TextCodingMission.html" class="play-btn" style="background:#38bdf8">เล่นต่อ ▶</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // รอให้ DataManager โหลดเสร็จ
+        setTimeout(() => {
+            if(sessionStorage.getItem('coding_student_id')) {
+                showDashboard(sessionStorage.getItem('coding_student_id'));
+            }
+        }, 500);
+
+        async function doLogin() {
+            const id = document.getElementById('student-id').value.trim();
+            if(!id) return alert("กรุณากรอกรหัสนักเรียน");
+            
+            const success = await DataManager.login(id);
+            if(success) showDashboard(id);
+        }
+
+        function showDashboard(id) {
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('dashboard-section').style.display = 'block';
+            document.getElementById('user-display').innerText = id;
+
+            // Update UI from DataManager
+            updateCard('icon', DataManager.getLevel('icon'), 20); // 20 Levels max
+            updateCard('block', DataManager.getLevel('block'), 100); // 100 Levels max
+            updateCard('text', DataManager.getLevel('text'), 50); // 50 Levels max
+        }
+
+        function updateCard(type, level, max) {
+            const pct = Math.min(100, (level / max) * 100);
+            document.getElementById(`prog-${type}`).style.width = `${pct}%`;
+            document.getElementById(`text-${type}`).innerText = `ล่าสุด: ด่าน ${level}`;
+        }
+    </script>
+</body>
+</html>
